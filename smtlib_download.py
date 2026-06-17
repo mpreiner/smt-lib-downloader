@@ -18,6 +18,10 @@ Download every logic into ./benchmarks::
 Download only two logics::
 
     ./smtlib_download.py --logics QF_BV QF_LIA https://zenodo.org/records/16740866
+
+Download and extract every logic::
+
+    ./smtlib_download.py --extract -o benchmarks https://zenodo.org/records/16740866
 """
 
 import argparse
@@ -25,6 +29,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import urllib.request
 
@@ -94,8 +100,29 @@ def verify(path, want_md5, key):
                  f"       got      {got}")
 
 
+def extract(path, dest_dir):
+    """Extract a .tar.zst archive into dest_dir using zstd + tar.
+
+    Decompressing with the ``zstd`` program and piping the plain tar stream
+    into ``tar`` avoids relying on tar's built-in zstd support, which varies
+    between platforms.
+    """
+    name = os.path.basename(path)
+    print(f"       extracting {name}")
+    dec = subprocess.Popen(["zstd", "-dc", path], stdout=subprocess.PIPE)
+    tar = subprocess.Popen(["tar", "-xf", "-", "-C", dest_dir], stdin=dec.stdout)
+    dec.stdout.close()  # allow dec to get SIGPIPE if tar exits early
+    tar.wait()
+    dec.wait()
+    if dec.returncode != 0 or tar.returncode != 0:
+        sys.exit(f"error: extraction of {name} failed")
+
+
 def download(meta, dest_dir):
-    """Download one file, skipping it if it is already complete."""
+    """Download one file, skipping it if it is already complete.
+
+    Returns the path to the downloaded archive.
+    """
     key = meta["key"]
     size = meta.get("size", 0)
     want_md5 = expected_md5(meta)
@@ -106,7 +133,7 @@ def download(meta, dest_dir):
     if os.path.exists(dest) and size and os.path.getsize(dest) == size:
         print(f"  skip {key} (already downloaded)")
         verify(dest, want_md5, key)
-        return
+        return dest
 
     print(f"  get  {key} ({human(size)})")
     tmp = dest + ".part"
@@ -136,6 +163,7 @@ def download(meta, dest_dir):
                  f"       expected {want_md5}\n"
                  f"       got      {h.hexdigest()}")
     os.replace(tmp, dest)
+    return dest
 
 
 def main():
@@ -148,7 +176,15 @@ def main():
                    help="only download these logics (default: all)")
     p.add_argument("-o", "--output-dir", default=".",
                    help="directory to download into (default: current directory)")
+    p.add_argument("-x", "--extract", action="store_true",
+                   help="extract each archive after download (requires zstd and tar)")
     args = p.parse_args()
+
+    if args.extract:
+        for tool in ("zstd", "tar"):
+            if shutil.which(tool) is None:
+                sys.exit(f"error: --extract requires the {tool!r} program, "
+                         f"which was not found on PATH")
 
     files = fetch_files(args.url)
     if not files:
@@ -175,7 +211,9 @@ def main():
     print(f"Downloading {len(selected)} logic(s), {human(total)} total, "
           f"into {args.output_dir!r}")
     for logic in sorted(selected):
-        download(selected[logic], args.output_dir)
+        archive = download(selected[logic], args.output_dir)
+        if args.extract:
+            extract(archive, args.output_dir)
     print("done")
 
 

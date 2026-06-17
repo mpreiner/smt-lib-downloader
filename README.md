@@ -11,11 +11,12 @@ checksum against the one published by Zenodo.
 ## Requirements
 
 - Python 3.6+ (standard library only — nothing to install)
+- For `--extract`: the `zstd` and `tar` programs on your `PATH`
 
 ## Usage
 
 ```
-smtlib_download.py [-h] [-l] [--logics LOGIC [LOGIC ...]] [-o OUTPUT_DIR] url
+smtlib_download.py [-h] [-l] [--logics LOGIC [LOGIC ...]] [-o OUTPUT_DIR] [-x] url
 ```
 
 The Zenodo record URL is the only required argument; a bare record id works too.
@@ -26,6 +27,7 @@ The Zenodo record URL is the only required argument; a bare record id works too.
 | `-l`, `--list` | List the available logics (with sizes) and exit |
 | `--logics LOGIC [...]` | Only download these logics (default: all) |
 | `-o`, `--output-dir DIR` | Directory to download into (default: current directory) |
+| `-x`, `--extract` | Extract each archive after download (requires `zstd` and `tar`) |
 | `-h`, `--help` | Show the help message and exit |
 
 ## Examples
@@ -48,6 +50,12 @@ Download only specific logics:
 ./smtlib_download.py --logics QF_BV QF_LIA -o benchmarks https://zenodo.org/records/16740866
 ```
 
+Download and extract every logic:
+
+```sh
+./smtlib_download.py --extract -o benchmarks https://zenodo.org/records/16740866
+```
+
 ## Behavior notes
 
 - **Resumable runs.** Each file is streamed to a `.part` temporary file and
@@ -58,5 +66,10 @@ Download only specific logics:
   final name. Skipped (already-present) files are re-verified too. A mismatch
   aborts without overwriting so the next run retries cleanly. If no checksum is
   published for a file, verification is skipped with a notice.
+- **Extraction.** With `--extract`, each `.tar.zst` archive is unpacked into the
+  output directory after it is downloaded and verified. The archive is left in
+  place (delete it yourself if you only want the extracted files). Extraction
+  shells out to `zstd` piped into `tar`, so those programs must be installed;
+  the archive is *not* decompressed in Python.
 - **Errors.** An unknown logic name (see `--list`) or a failed API request exits
   with a non-zero status and a message on stderr.

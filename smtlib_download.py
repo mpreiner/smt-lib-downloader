@@ -212,7 +212,7 @@ def main():
           f"into {args.output_dir!r}")
     for logic in sorted(selected):
         archive = download(selected[logic], args.output_dir)
-        if args.extract:
+        if args.extract and archive.endswith(".tar.zst"):
             extract(archive, args.output_dir)
     print("done")
 
